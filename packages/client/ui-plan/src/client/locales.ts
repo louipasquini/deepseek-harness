@@ -18,3 +18,11 @@ export const en = {
   'chip.off.aria': 'Plan mode off, press to turn on',
   'chip.off.title': 'Plan mode off — click to turn on (/plan)',
 } satisfies Record<PlanKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'chip.on.aria': 'Modo plano ativado, pressione para desativar',
+  'chip.on.title': 'Modo plano ativado — clique para desativar (/plan off)',
+  'chip.off.aria': 'Modo plano desativado, pressione para ativar',
+  'chip.off.title': 'Modo plano desativado — clique para ativar (/plan)',
+} satisfies Record<PlanKey, string>

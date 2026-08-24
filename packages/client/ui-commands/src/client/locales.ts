@@ -26,3 +26,15 @@ export const en = {
   'listbox.aria': '/{command} matches',
   'notice.imagesUnsupported': '/{command} does not accept image attachments; remove them first',
 } satisfies Record<CommandKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'search.placeholder': 'Pesquisar…',
+  'search.aria': 'Filtrar opções',
+  'status.loading': 'Carregando opções…',
+  'status.applying': 'Aplicando…',
+  'status.empty': 'Sem opções',
+  'overlay.aria': 'Opções de /{command}',
+  'listbox.aria': 'Correspondências de /{command}',
+  'notice.imagesUnsupported': '/{command} não aceita anexos de imagem; remova-os primeiro',
+} satisfies Record<CommandKey, string>

@@ -79,5 +79,43 @@ export const en: Record<SubagentKey, string> = {
   'readonly.body': 'The parent session is offline; reopen it to continue sending messages.',
 }
 
+/** Brazilian Portuguese dictionary, key-identical to the Chinese source of truth. */
+export const pt: Record<SubagentKey, string> = {
+  'diagnostic.corrupt': 'registro de sessão corrompido',
+  'diagnostic.unsupported': 'versão de registro de subagente sem suporte',
+  'diagnostic.unavailable': 'registro de sessão temporariamente indisponível',
+  'duration.seconds': '{seconds}s',
+  'duration.minutes': '{minutes}min {seconds}s',
+  'duration.hours': '{hours}h {minutes}min {seconds}s',
+  'duration.days': '{days}d',
+  'duration.daysHours': '{days}d {hours}h',
+  'duration.months': '~{months}meses',
+  'duration.monthsDays': '~{months}meses {days}d',
+  'duration.years': '~{years}anos',
+  'duration.yearsMonths': '~{years}anos {months}meses',
+  'duration.exactDays': '{days}d {hours}h {minutes}min {seconds}s',
+  'duration.exactTitle': 'Duração total ativa: {duration}',
+  'loading.label': 'Carregando subagentes…',
+  'loading.aria': 'Carregando subagentes',
+  'load.error': 'Não foi possível carregar os subagentes',
+  'retry': 'Tentar novamente',
+  'mode.oneShot': 'execução única',
+  'mode.continuable': 'continuável',
+  'activity.running': 'em execução',
+  'activity.inactive': 'não está em execução',
+  'branch.collapse': 'Recolher descendentes de {label}',
+  'branch.expand': 'Expandir descendentes de {label}',
+  'count.total.one': '{count} subagente',
+  'count.total.other': '{count} subagentes',
+  'count.running.one': '{count} subagente em execução',
+  'count.running.other': '{count} subagentes em execução',
+  'switcher.aria': 'Alternar subagente: {title}',
+  'tree.aria': 'Sessões de subagentes',
+  'readonly.oneShot.title': 'Registro de subagente de execução única',
+  'readonly.title': 'Este subagente é somente leitura por enquanto',
+  'readonly.oneShot.body': 'Tarefas de execução única não aceitam mensagens de acompanhamento; revise aqui o registro completo da execução.',
+  'readonly.body': 'A sessão pai está offline; reabra-a para continuar enviando mensagens.',
+}
+
 /** Key domain of the `subagent` namespace (zh is the source of truth). */
 export type SubagentKey = keyof typeof zh

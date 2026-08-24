@@ -41,5 +41,24 @@ export const en: Record<JobKey, string> = {
   'duration.title.done': 'Took {duration}',
 }
 
+/** Brazilian Portuguese dictionary, key-identical to the Chinese source of truth. */
+export const pt: Record<JobKey, string> = {
+  'count.live.one': '{count} tarefa em segundo plano em execução',
+  'count.live.other': '{count} tarefas em segundo plano em execução',
+  'count.idle.one': '{count} tarefa em segundo plano',
+  'count.idle.other': '{count} tarefas em segundo plano',
+  'list.aria': 'Tarefas em segundo plano',
+  'status.running': 'em execução',
+  'status.stopping': 'parando',
+  'status.completed': 'concluída',
+  'status.killed': 'cancelada',
+  'status.failed': 'falhou',
+  'duration.seconds': '{seconds}s',
+  'duration.minutes': '{minutes}min {seconds}s',
+  'duration.hours': '{hours}h {minutes}min',
+  'duration.title.live': 'Em execução por {duration}',
+  'duration.title.done': 'Levou {duration}',
+}
+
 /** Key domain of the `job` namespace (zh is the source of truth). */
 export type JobKey = keyof typeof zh

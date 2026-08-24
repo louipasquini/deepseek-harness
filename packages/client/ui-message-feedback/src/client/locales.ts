@@ -43,3 +43,20 @@ export const en = {
   'error.load': 'Could not load feedback',
   'error.generic': 'Could not save feedback',
 } satisfies Record<MessageFeedbackKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'action.like': 'Boa resposta',
+  'action.likeActive': 'Remover avaliação',
+  'action.dislike': 'Resposta ruim',
+  'action.dislikeActive': 'Remover avaliação',
+  'note.open': 'Adicionar uma nota',
+  'note.dialog': 'Feedback',
+  'note.placeholder': 'O que foi bom ou o que deu errado? (opcional)',
+  'note.save': 'Salvar',
+  'note.cancel': 'Cancelar',
+  'note.aria': 'Nota de feedback',
+  'error.conflict': 'Este feedback mudou em outro lugar; o estado mais recente é exibido',
+  'error.load': 'Não foi possível carregar o feedback',
+  'error.generic': 'Não foi possível salvar o feedback',
+} satisfies Record<MessageFeedbackKey, string>

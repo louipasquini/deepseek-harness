@@ -52,3 +52,24 @@ export const en = {
   'blocked.composer': 'This model is unavailable — select one to continue',
   'empty.efforts': 'This model provides no reasoning effort levels.',
 } satisfies Record<ModelKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'command.description': 'Selecione o modelo desta conversa',
+  'option.loadError': 'Falha ao carregar o catálogo: {message}',
+  'trigger.fallback': 'Selecionar modelo',
+  'trigger.selectAria': 'Selecionar modelo',
+  'trigger.aria': 'Selecionar modelo, atual {model}',
+  'trigger.ariaEffort': 'Selecionar modelo, atual {model}, nível de raciocínio {effort}',
+  'menu.aria': 'Modelo e nível de raciocínio',
+  'menu.model': 'Modelo',
+  'menu.effort': 'Nível de raciocínio',
+  'effort.providerDefault': 'Padrão',
+  'status.loading': 'Atualizando lista de modelos…',
+  'error.action': 'Falha na operação do modelo: {message}',
+  'action.reload': 'Recarregar',
+  'warning.groupLoad': '{name} falhou ao carregar: {message}',
+  'empty.models': 'Nenhum modelo disponível.',
+  'blocked.composer': 'Este modelo está indisponível — selecione um para continuar',
+  'empty.efforts': 'Este modelo não oferece níveis de raciocínio.',
+} satisfies Record<ModelKey, string>

@@ -34,3 +34,13 @@ export const en = {
   'candidate.session': 'Session',
   'candidate.noCwd': '(no cwd)',
 } satisfies Record<ReferenceKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'section.files': 'Arquivos e pastas',
+  'section.sessions': 'Conversas de sessão',
+  'candidate.file': 'Arquivo',
+  'candidate.folder': 'Pasta',
+  'candidate.session': 'Sessão',
+  'candidate.noCwd': '(sem diretório de trabalho)',
+} satisfies Record<ReferenceKey, string>

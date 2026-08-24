@@ -22,3 +22,13 @@ export const en = {
   'openDocument.error': 'Could not open configuration file',
   'general.nav': 'General',
 } satisfies Record<SettingsKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'trigger': 'Configurações',
+  'title': 'Configurações',
+  'close': 'Fechar',
+  'openDocument': 'Abrir arquivo de configuração',
+  'openDocument.error': 'Não foi possível abrir o arquivo de configuração',
+  'general.nav': 'Geral',
+} satisfies Record<SettingsKey, string>

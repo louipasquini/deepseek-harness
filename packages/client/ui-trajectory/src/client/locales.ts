@@ -62,3 +62,21 @@ export const en: Record<TrajectoryKey, string> = {
   'toolbar.search': 'Search trajectory',
   'toolbar.searchPlaceholder': 'Search',
 }
+
+/** Brazilian Portuguese dictionary. */
+export const pt: Record<TrajectoryKey, string> = {
+  'view.trajectory': 'Trajetória',
+  'toolbar.aria': 'Barra de ferramentas da trajetória',
+  'toolbar.duration': 'Duração',
+  'toolbar.useActualDuration': 'Usar duração real',
+  'toolbar.useEqualWidth': 'Usar operações de largura igual',
+  'toolbar.actualTime': 'Tempo real',
+  'toolbar.turns': 'Turnos',
+  'toolbar.expandTurns': 'Expandir turnos',
+  'toolbar.collapseTurns': 'Recolher turnos',
+  'toolbar.calls': 'Chamadas',
+  'toolbar.expandCalls': 'Expandir chamadas',
+  'toolbar.collapseCalls': 'Recolher chamadas',
+  'toolbar.search': 'Pesquisar trajetória',
+  'toolbar.searchPlaceholder': 'Pesquisar',
+}

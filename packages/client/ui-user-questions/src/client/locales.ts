@@ -40,3 +40,22 @@ export const en = {
   'plan.decline': 'Refuse',
   'plan.discuss': 'Chat about it',
 } satisfies Record<QuestionKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'error.incomplete': 'Conclua esta pergunta primeiro.',
+  'error.unanswered': 'Selecione uma opção ou escreva uma resposta personalizada.',
+  'nav.prev': 'Pergunta anterior',
+  'nav.next': 'Próxima pergunta',
+  'nav.minimize': 'Recolher o cartão de pergunta',
+  'nav.maximize': 'Expandir o cartão de pergunta',
+  'nav.cancel': 'Descartar todas as perguntas',
+  'option.recommended': 'Recomendado',
+  'custom.placeholder': 'Digite sua resposta',
+  'action.skip': 'Pular esta pergunta',
+  'action.next': 'Próxima',
+  'plan.header': 'Revisão do plano',
+  'plan.approve': 'Aprovar',
+  'plan.decline': 'Recusar',
+  'plan.discuss': 'Conversar sobre isso',
+} satisfies Record<QuestionKey, string>

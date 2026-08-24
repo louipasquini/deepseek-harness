@@ -21,5 +21,14 @@ export const en: Record<DeliverablesKey, string> = {
   'produced.showInFolder': 'Show in folder',
 }
 
+/** Brazilian Portuguese dictionary (same key set). */
+export const pt: Record<DeliverablesKey, string> = {
+  'produced.label': 'Produzido',
+  'produced.moreOne': '+ 1 arquivo',
+  'produced.more': '+ {count} arquivos',
+  'produced.open': 'Abrir {name}',
+  'produced.showInFolder': 'Mostrar na pasta',
+}
+
 /** Union of this namespace's dictionary keys. */
 export type DeliverablesKey = keyof typeof zh

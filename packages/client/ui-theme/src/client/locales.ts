@@ -18,3 +18,11 @@ export const en = {
   'appearance.dark': 'Dark',
   'appearance.system': 'System',
 } satisfies Record<ThemeKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'appearance.title': 'Aparência',
+  'appearance.light': 'Claro',
+  'appearance.dark': 'Escuro',
+  'appearance.system': 'Sistema',
+} satisfies Record<ThemeKey, string>

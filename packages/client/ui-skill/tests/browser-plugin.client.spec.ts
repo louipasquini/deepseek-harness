@@ -138,6 +138,13 @@ describe('apply', () => {
           'row.instructions': 'Instructions',
           'menu.userOnly': 'user-only',
         },
+        pt: {
+          'row.running': 'Carregando habilidade',
+          'row.failed': 'Falha ao carregar a habilidade',
+          'row.stopped': 'Carregamento da habilidade interrompido',
+          'row.instructions': 'Instruções',
+          'menu.userOnly': 'somente usuário',
+        },
       },
     }])
   })

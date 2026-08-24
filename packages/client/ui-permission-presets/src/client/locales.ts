@@ -29,6 +29,19 @@ export const en = {
   'confirm.enable': 'Enable Full access',
 } satisfies Record<PermissionSettingsKey, string>
 
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'title': 'Permissão',
+  'description': 'Escolha o modo de permissão padrão para novas sessões',
+  'loading': 'Carregando',
+  'unavailable': 'Indisponível',
+  'confirm.title': 'Ativar Full access?',
+  'confirm.description': 'Com Full access, novas sessões reduzem as etapas de confirmação e podem executar mais ações diretamente, incluindo operações sensíveis, alterações de arquivos ou comandos externos. Use somente quando confiar nas tarefas seguintes.',
+  'confirm.acknowledge': 'Entendo os riscos e quero continuar',
+  'confirm.cancel': 'Cancelar',
+  'confirm.enable': 'Ativar Full access',
+} satisfies Record<PermissionSettingsKey, string>
+
 /** Simplified Chinese dictionary for the current-session popup gate. */
 export const accessZh = {
   'confirm.title': '确认启用 Full access？',
@@ -48,4 +61,13 @@ export const accessEn = {
   'confirm.acknowledge': 'I understand the risks and want to continue',
   'confirm.cancel': 'Cancel',
   'confirm.enable': 'Enable Full access',
+} satisfies Record<PermissionAccessKey, string>
+
+/** Brazilian Portuguese dictionary for the current-session popup gate. */
+export const accessPt = {
+  'confirm.title': 'Ativar Full access?',
+  'confirm.description': 'Com Full access, o agente reduz as etapas de confirmação e pode executar mais ações diretamente, incluindo operações sensíveis, alterações de arquivos ou comandos externos. Use somente quando confiar na tarefa atual.',
+  'confirm.acknowledge': 'Entendo os riscos e quero continuar',
+  'confirm.cancel': 'Cancelar',
+  'confirm.enable': 'Ativar Full access',
 } satisfies Record<PermissionAccessKey, string>

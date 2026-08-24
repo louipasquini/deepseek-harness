@@ -18,3 +18,11 @@ export const en = {
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
 } satisfies Record<SidebarKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'session.new': 'Nova Sessão',
+  'session.new.label': 'Nova sessão',
+  'toggle.open': 'Abrir barra lateral',
+  'toggle.collapse': 'Recolher barra lateral',
+} satisfies Record<SidebarKey, string>

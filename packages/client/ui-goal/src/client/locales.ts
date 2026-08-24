@@ -32,3 +32,18 @@ export const en = {
   'action.edit': 'Edit goal',
   'action.clear': 'Clear goal',
 } satisfies Record<GoalKey, string>
+
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt = {
+  'phase.active': 'Objetivo em andamento',
+  'phase.paused': 'Objetivo pausado',
+  'phase.blocked': 'Objetivo bloqueado',
+  'objective.aria': 'Conteúdo do objetivo',
+  'commandInput.aria': 'Entrada de comando',
+  'action.save': 'Salvar objetivo',
+  'action.cancel': 'Cancelar edição',
+  'action.pause': 'Pausar objetivo',
+  'action.resume': 'Retomar objetivo',
+  'action.edit': 'Editar objetivo',
+  'action.clear': 'Limpar objetivo',
+} satisfies Record<GoalKey, string>
