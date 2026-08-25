@@ -221,6 +221,19 @@ export abstract class SessionPersistence extends Service {
   Promise<{ meta: SessionHeader; events: SessionEvent[] }>
 
   /**
+   * Permanently remove one session: its durable log, metadata, and the
+   * coordinator's per-session bookkeeping. The explicit exception to the
+   * append-only contract — an administrative removal, never part of the write
+   * path. The session must not be live in the SessionStore (the caller stops
+   * a live agent first); any in-flight retirement of the identity settles
+   * before the removal. Unknown ids are an idempotent no-op.
+   * @param id - the persisted session to remove.
+   * @param signal - optional cancellation for queued and backend work.
+   * @returns `true` when the backend removed a durable artifact, `false` for an unknown id.
+   */
+  abstract delete(id: SessionId, signal?: AbortSignal): Promise<boolean>
+
+  /**
    * Lightweight listing from metadata, without a full-log parse.
    * @param signal - optional cancellation for backend listing work.
    * @returns one header per materialized session.

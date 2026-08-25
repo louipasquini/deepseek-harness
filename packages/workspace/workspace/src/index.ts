@@ -52,6 +52,17 @@ export class WorkspaceUnknownSessionError extends Error {
   }
 }
 
+/** A deleteSession request named a session still bound to the live SessionStore. */
+export class WorkspaceLiveSessionError extends Error {
+  /**
+   * @param sessionId - The live session id.
+   */
+  constructor(readonly sessionId: SessionId) {
+    super(`cannot delete session '${sessionId}': the session is still live; stop its agent first`)
+    this.name = 'WorkspaceLiveSessionError'
+  }
+}
+
 /** A workspace reorder named a source or anchor absent from the durable registry order. */
 export class WorkspaceOrderInvalidError extends Error {
   /**
@@ -252,6 +263,61 @@ export class WorkspaceRegistry extends Service {
       const state = this.requireState()
       await this.setState({ ...state, archivedSessionIds: [...state.archivedSessionIds, sessionId] })
     })
+  }
+
+  /**
+   * Remove one session from the registry-global archive set durably,
+   * restoring its position in every grouping surface. The session's workspace
+   * accounting slot never left, so nothing else changes. An id outside the
+   * set resolves without writing.
+   * @param sessionId - The session to unarchive.
+   * @returns resolution after durability.
+   */
+  unarchiveSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      const state = this.requireState()
+      if (!state.archivedSessionIds.includes(sessionId)) return
+      await this.setState({
+        ...state,
+        archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+      })
+    })
+  }
+
+  /**
+   * Permanently delete one session: remove its workspace accounting slot from
+   * every workspace record, drop it from the archive set, and delete its
+   * durable log through session persistence. The caller stops a live agent
+   * first — a session still bound to the live SessionStore rejects with
+   * {@link WorkspaceLiveSessionError}. Unknown ids are an idempotent no-op.
+   * @param sessionId - The session to delete.
+   * @returns `true` when a durable log was removed.
+   */
+  deleteSession(sessionId: SessionId): Promise<boolean> {
+    return this.enqueueOperation(() => this.deleteSessionCore(sessionId))
+  }
+
+  private async deleteSessionCore(sessionId: SessionId): Promise<boolean> {
+    if (this.ctx.get('sessions')?.get(sessionId) !== undefined) {
+      throw new WorkspaceLiveSessionError(sessionId)
+    }
+    // Detach the accounting slot while the header index still identifies the
+    // session; the entity's prune keeps every other accounted member.
+    for (const entity of this.entities.values()) await entity.detachSession(sessionId)
+    const state = this.requireState()
+    if (state.archivedSessionIds.includes(sessionId)) {
+      await this.setState({
+        ...state,
+        archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+      })
+    }
+    const removed = await this.ctx.sessionPersistence.delete(sessionId)
+    // Drop the deleted identity from the header index so a later archive of
+    // the same id cannot succeed against a ghost.
+    this.headers.delete(sessionId)
+    this.sessionPaths.delete(sessionId)
+    this.invalidSessionPaths.delete(sessionId)
+    return removed
   }
 
   /**

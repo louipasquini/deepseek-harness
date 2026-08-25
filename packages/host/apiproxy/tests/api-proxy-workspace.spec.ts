@@ -75,21 +75,33 @@ async function harness(
   const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
-  ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+  // The workspace registry reads headers only (no log bodies) and deletes
+  // through the service; the harness keeps sessions in memory, so the delete
+  // answers that no durable artifact existed.
+  ctx.provide('sessionPersistence', {
+    list: () => Promise.resolve([]),
+    delete: () => Promise.resolve(false),
+  } as never)
   await ctx.plugin(WorkspaceRegistry)
 
   const factory: AgentFactory = {
     async createAgent(_ownerCtx, options) {
-      const session = ctx.sessions.create(
+      // Publish through enter+announce so the handle's dispose can detach the
+      // session (the real loop's reverse teardown contract) — the delete
+      // path's agent stop must leave the identity cold.
+      const session = ctx.sessions.prepare(
         options.sessionId,
         options.meta === undefined ? {} : { meta: options.meta },
       )
+      const detachSession = ctx.sessions.enter(session)
+      ctx.sessions.announce(session)
       const agent = stubAgent(session)
       const unregister = ctx.agents.register(agent)
       return {
         agent,
         dispose: () => {
           unregister()
+          detachSession()
           return Promise.resolve()
         },
       }
@@ -567,5 +579,94 @@ describe('Host Workspace increments', () => {
       error: { code: 'session-not-found', details: { sessionId: 'session-ghost' } },
     })
     abort.abort()
+  })
+
+  it('unarchives a session back into grouping surfaces and streams the set once', async () => {
+    const { api, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'unarchive-home') }))).workspace
+    const sessionId = SessionId('session-to-unarchive')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+
+    const abort = new AbortController()
+    const stream: AsyncIterator<RpcRequest<HostFrame>> =
+      api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    const changed = nextHostFrame(stream)
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId }))).archivedSessionIds)
+      .toEqual([])
+    expect(await changed).toMatchObject({
+      payload: { type: 'host/archived-sessions-changed', archivedSessionIds: [] },
+    })
+
+    // The idempotent repeat emits no second frame.
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId }))).archivedSessionIds)
+      .toEqual([])
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).toEqual([])
+    abort.abort()
+  })
+
+  it('deletes a session permanently: stops the agent, drops accounting and archive membership, and streams removal', async () => {
+    const { api, ctx, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'delete-session') }))).workspace
+    const sessionId = SessionId('session-to-delete')
+    const keeperId = SessionId('session-kept')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId: keeperId })))
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+    expect(ctx.agents.get(sessionId)).toBeDefined()
+
+    const abort = new AbortController()
+    const stream: AsyncIterator<RpcRequest<HostFrame>> =
+      api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    const frames: HostFrame[] = []
+    const drain = (async () => {
+      for (;;) {
+        const next = await stream.next()
+        if (next.done === true) return
+        frames.push(next.value.payload)
+      }
+    })()
+
+    expect(expectOk(await api.workspace.deleteSession(request({ sessionId }))).deleted).toBe(true)
+
+    // The disposed agent leaves the registry and the session store.
+    expect(ctx.agents.get(sessionId)).toBeUndefined()
+    expect(ctx.sessions.get(sessionId)).toBeUndefined()
+    const listed = expectOk(await api.workspace.list(request({})))
+    expect(listed.archivedSessionIds).toEqual([])
+    expect(listed.items[0]?.sessionIds).toEqual([keeperId])
+    expect(expectOk(await api.sessions.list(request({}))).items.map(item => item.sessionId))
+      .not.toContain(sessionId)
+
+    abort.abort()
+    await drain
+    expect(frames).toContainEqual(
+      expect.objectContaining({ type: 'host/session-removed', sessionId }),
+    )
+    expect(frames).toContainEqual(
+      expect.objectContaining({ type: 'host/archived-sessions-changed', archivedSessionIds: [] }),
+    )
+  })
+
+  it('deleteSession succeeds idempotently for unknown ids and fences subagent-owned identities', async () => {
+    const { api, ctx, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'delete-ghost') }))).workspace
+    expect(expectOk(await api.workspace.deleteSession(request({ sessionId: SessionId('session-ghost') }))).deleted)
+      .toBe(true)
+
+    const childId = SessionId('session-subagent-child-delete')
+    ctx.sessions.create(childId, {
+      meta: {
+        cwd: workspace.path,
+        parentSession: SessionId('session-parent-delete'),
+        origin: 'subagent',
+      },
+    })
+    const fenced = await api.workspace.deleteSession(request({ sessionId: childId }))
+    expect(fenced.result).toMatchObject({
+      ok: false,
+      error: { code: 'agent-busy', details: { reason: 'use subagent delivery for this child session' } },
+    })
+    expect(ctx.sessions.get(childId)).toBeDefined()
   })
 })

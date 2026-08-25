@@ -643,6 +643,18 @@ async create(options: CreateAgentOptions): Promise<AgentHandle>
 async resume(options: ResumeAgentOptions): Promise<AgentHandle>
 
 /**
+ * Stop one live agent and drain its teardown: cancel the loop, await its
+ * quiescence, unregister the agent, detach its session (emitting
+ * `session/disposed`), and unwind the scope. The administrative counterpart
+ * to the owner-held handle — used by explicit identity lifecycles (session
+ * deletion) that do not know the creating consumer. Unknown or already
+ * detached identities are a no-op.
+ * @param sessionId - the live agent's session id.
+ * @returns `true` when a live agent was stopped, `false` when none was retained.
+ */
+async stop(sessionId: SessionId): Promise<boolean>
+
+/**
  * Register a live agent. Throws if an agent with the same id is already
  * registered. Emits `agent/created` on registration and `agent/disposed`
  * when the calling fiber is disposed — both with the agent's scope carrier

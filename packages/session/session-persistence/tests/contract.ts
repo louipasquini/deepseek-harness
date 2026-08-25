@@ -428,5 +428,50 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
         await dispose()
       }
     })
+
+    it('delete removes a materialized session from every read surface and is idempotent for unknown ids', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const m = meta('deleted', '/work')
+        const log = oneTurnLog()
+        await persistence.create(m)
+        await persistence.append(m.id, log)
+
+        await expect(persistence.delete(m.id)).resolves.toBe(true)
+        await expect(persistence.load(m.id)).rejects.toThrow(/not found/)
+        await expect(persistence.readFrom(m.id, 0)).rejects.toThrow(/not found/)
+        await expect(persistence.inspect(m.id)).rejects.toThrow(/not found/)
+        expect((await persistence.list()).map(header => header.id)).not.toContain(m.id)
+        expect((await persistence.listSnapshots()).map(snapshot => snapshot.header.id)).not.toContain(m.id)
+
+        await expect(persistence.delete(m.id)).resolves.toBe(false)
+        await expect(persistence.delete(SessionId('never-existed'))).resolves.toBe(false)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it('delete frees a lazily-created id so the same id can be created and persisted again', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        // A created-but-never-appended session has no artifact; deleting it
+        // resolves false but must release the id reservation.
+        const m = meta('recreated')
+        await persistence.create(m)
+        await expect(persistence.delete(m.id)).resolves.toBe(false)
+
+        await persistence.create(m)
+        await persistence.append(m.id, oneTurnLog())
+        const loaded = await persistence.load(m.id)
+        expect(loaded.events).toEqual(oneTurnLog())
+
+        await expect(persistence.delete(m.id)).resolves.toBe(true)
+        await persistence.create(m)
+        await persistence.append(m.id, oneTurnLog())
+        expect((await persistence.load(m.id)).events).toEqual(oneTurnLog())
+      } finally {
+        await dispose()
+      }
+    })
   })
 }

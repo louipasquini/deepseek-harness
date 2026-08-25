@@ -120,6 +120,10 @@ class TestPersistence extends SessionPersistence {
       revision: SessionPersistenceRevision(`events:${entry.events.length}`),
     }))
   }
+
+  delete(id: SessionIdType): Promise<boolean> {
+    return Promise.resolve(TestPersistence.entries.delete(id))
+  }
 }
 
 async function liveContext(config: ConstructorParameters<typeof TestSessionQueryEngine>[1] = {}): Promise<Context> {

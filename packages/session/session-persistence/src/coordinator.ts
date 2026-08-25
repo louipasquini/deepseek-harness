@@ -193,6 +193,18 @@ export interface PersistenceBackend<TornMarker = unknown> {
   commitRepair(meta: SessionHeader, tornMarker: TornMarker | undefined, closers: readonly SessionEvent[]): Promise<void>
 
   /**
+   * Permanently remove one session's durable artifact. The explicit exception
+   * to the append-only contract, invoked only by the coordinator's `delete`
+   * after the identity is neither live nor retiring. A torn removal may leave
+   * the artifact recoverable on the next scan — deletion is retryable and
+   * never corrupts other sessions.
+   * @param id - persisted session id to remove.
+   * @param signal - optional cancellation for backend removal work.
+   * @returns `true` when a durable artifact was removed, `false` when the id was unknown.
+   */
+  deleteStored(id: SessionId, signal?: AbortSignal): Promise<boolean>
+
+  /**
    * List all stored (materialized) sessions' metadata.
    * @param signal - optional cancellation for backend listing work.
    */
@@ -867,6 +879,39 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     const whole = await this.readStoredPrefix(id, signal)
     // Sequential fallback: contiguous seqs from 0 make the suffix an index slice.
     return { meta: whole.meta, events: whole.events.slice(fromSeq) }
+  }
+
+  /**
+   * Permanently remove one session: the durable artifact, the coordinator's
+   * per-session state, and any retained preparation. The session must not be
+   * live in the SessionStore (the caller stops a live agent first); an
+   * in-flight retirement of the identity settles before the removal. Unknown
+   * ids are an idempotent no-op.
+   * @param id - the session to delete.
+   * @param signal - optional cancellation for queued and backend work.
+   * @returns `true` when the backend removed a durable artifact.
+   */
+  async delete(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    if (this.retirements.has(id)) await this.waitForRetirement(id, signal)
+    return this.serialize(id, () => this.deleteCore(id, signal), signal)
+  }
+
+  private async deleteCore(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted()
+    if (this.ctx.sessions.get(id) !== undefined) {
+      throw new Error(`cannot delete session "${id}" while it is live`)
+    }
+    const removed = await this.backend.deleteStored(id, signal)
+    signal?.throwIfAborted()
+    // Drop bookkeeping regardless of artifact presence: a lazily-created,
+    // never-appended session has no artifact but its id reservation must
+    // leave the states map so the id can be created again.
+    this.states.delete(id)
+    this.preparations.invalidate(id)
+    // A settled delete owns no chain slot: drop this id's tail so a later
+    // create/append starts fresh instead of queuing behind the removal.
+    this.chains.delete(id)
+    return removed
   }
 
   /** Read one detached physical prefix without logical recovery or caching. */

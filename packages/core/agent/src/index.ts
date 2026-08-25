@@ -255,6 +255,15 @@ interface FactorySlot {
  */
 export class AgentRegistry extends Service {
   private store = new Map<SessionId, AgentEntry>()
+  /**
+   * Administrative teardown capabilities retained from every handle returned
+   * by {@link create}/{@link resume}, keyed by session id. The registry never
+   * hands these out — the consumer owner keeps its own handle — but an
+   * explicit identity lifecycle (deleting a session) must be able to stop the
+   * live agent without knowing who created it. Entries drop when the agent
+   * detaches.
+   */
+  private readonly stops = new Map<SessionId, () => Promise<void>>()
   private factory: FactorySlot | undefined
   private readonly initiators = new AsyncLocalStorage<Agent | undefined>()
   private readonly initiatorRuns = new AsyncLocalStorage<InitiatorRun>()
@@ -411,7 +420,9 @@ export class AgentRegistry extends Service {
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.createAgent, receiver, [ownerCtx, options])
+    const handle = await Reflect.apply(target.createAgent, receiver, [ownerCtx, options])
+    this.retainStop(handle)
+    return handle
   }
 
   /**
@@ -426,7 +437,36 @@ export class AgentRegistry extends Service {
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.resume, receiver, [ownerCtx, options])
+    const handle = await Reflect.apply(target.resume, receiver, [ownerCtx, options])
+    this.retainStop(handle)
+    return handle
+  }
+
+  /**
+   * Retain one resolved handle's teardown for administrative stop. Publication
+   * happened inside the factory, so the entry is live; a same-id lifecycle
+   * disposed between publication and this call drops its key on detach, and
+   * {@link stop} re-checks the live entry before invoking the capability.
+   */
+  private retainStop(handle: AgentHandle): void {
+    this.stops.set(handle.agent.id, () => handle.dispose())
+  }
+
+  /**
+   * Stop one live agent and drain its teardown: cancel the loop, await its
+   * quiescence, unregister the agent, detach its session (emitting
+   * `session/disposed`), and unwind the scope. The administrative counterpart
+   * to the owner-held handle — used by explicit identity lifecycles (session
+   * deletion) that do not know the creating consumer. Unknown or already
+   * detached identities are a no-op.
+   * @param sessionId - the live agent's session id.
+   * @returns `true` when a live agent was stopped, `false` when none was retained.
+   */
+  async stop(sessionId: SessionId): Promise<boolean> {
+    const dispose = this.stops.get(sessionId)
+    if (dispose === undefined || !this.store.has(sessionId)) return false
+    await dispose()
+    return true
   }
 
   /**
@@ -516,6 +556,9 @@ export class AgentRegistry extends Service {
     /* v8 ignore next -- enter() rejects replacement while this single-shot detach capability is live. */
     if (this.store.get(entry.id) !== entry) return
     this.store.delete(entry.id)
+    // The administrative stop capability follows the exact lifecycle it
+    // belongs to; a later same-id lifecycle retains its own.
+    this.stops.delete(entry.id)
     // An insertion rolled back before announce was never externally created,
     // so emitting disposed would invent an impossible lifecycle edge. Marking
     // happens before the created emit: if a later created listener throws,

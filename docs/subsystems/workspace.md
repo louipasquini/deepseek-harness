@@ -213,6 +213,27 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
 archiveSession(sessionId: SessionId): Promise<void>
 
 /**
+ * Remove one session from the registry-global archive set durably,
+ * restoring its position in every grouping surface. The session's workspace
+ * accounting slot never left, so nothing else changes. An id outside the
+ * set resolves without writing.
+ * @param sessionId - The session to unarchive.
+ * @returns resolution after durability.
+ */
+unarchiveSession(sessionId: SessionId): Promise<void>
+
+/**
+ * Permanently delete one session: remove its workspace accounting slot from
+ * every workspace record, drop it from the archive set, and delete its
+ * durable log through session persistence. The caller stops a live agent
+ * first — a session still bound to the live SessionStore rejects with
+ * {@link WorkspaceLiveSessionError}. Unknown ids are an idempotent no-op.
+ * @param sessionId - The session to delete.
+ * @returns `true` when a durable log was removed.
+ */
+deleteSession(sessionId: SessionId): Promise<boolean>
+
+/**
  * Resolve by canonical directory path without creating or mutating a
  * workspace. A missing path rejects during `realpath`; an existing unowned
  * directory returns `undefined`.

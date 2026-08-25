@@ -435,4 +435,51 @@ describe('AgentRegistry factory seam', () => {
     const raw = (traced as unknown as { [symbols.original]?: TracedFactory })[symbols.original]
     expect(states.get(raw!)).toEqual(['create', 'resume'])
   })
+
+  it('stop runs the retained handle teardown exactly once per live identity', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
+    // A factory that publishes through the registry (the loop's publish
+    // contract): the handle's dispose detaches the announced agent.
+    let disposed = 0
+    const factory: AgentFactory = {
+      async createAgent(ownerCtx, options) {
+        const agent = stubAgent(options.sessionId)
+        const detach = ownerCtx.agents.enter(agent, undefined)
+        ownerCtx.agents.announce(agent)
+        return { agent, dispose: async () => { disposed += 1; detach() } }
+      },
+      async resume(_ownerCtx, options) {
+        throw new Error(`unexpected resume for ${options.resumeSessionId}`)
+      },
+    }
+    ctx.agents.setFactory(factory)
+    const heard: string[] = []
+    ctx.on('agent/disposed', ({ agent }) => void heard.push(agent.id))
+
+    await ctx.agents.create({ sessionId: SessionId('stop-me') })
+    expect(ctx.agents.get(SessionId('stop-me'))).toBeDefined()
+
+    await expect(ctx.agents.stop(SessionId('stop-me'))).resolves.toBe(true)
+    expect(disposed).toBe(1)
+    expect(heard).toEqual(['stop-me'])
+    expect(ctx.agents.get(SessionId('stop-me'))).toBeUndefined()
+
+    // The retained capability dropped with the entry: a second stop is a no-op.
+    await expect(ctx.agents.stop(SessionId('stop-me'))).resolves.toBe(false)
+    await expect(ctx.agents.stop(SessionId('never-live'))).resolves.toBe(false)
+  })
+
+  it('stop leaves an owner-held handle and registry-driven agents untouched', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
+    // `register`/`enter` paths hold no administrative stop capability: the
+    // teardown belongs to whoever created the agent.
+    const agent = stubAgent('registered-only')
+    const detach = ctx.agents.enter(agent, undefined)
+    ctx.agents.announce(agent)
+    await expect(ctx.agents.stop(agent.id)).resolves.toBe(false)
+    expect(ctx.agents.get(agent.id)).toBe(agent)
+    detach()
+  })
 })

@@ -48,7 +48,8 @@ async function harness(options: HarnessOptions = {}) {
   const list = vi.fn(async () => listed)
   const load = vi.fn(() => { throw new Error('event bodies must not be loaded') })
   const inspect = vi.fn(() => { throw new Error('event bodies must not be inspected') })
-  ctx.provide('sessionPersistence', { list, load, inspect } as never)
+  const deleteLog = vi.fn(async () => true)
+  ctx.provide('sessionPersistence', { list, load, inspect, delete: deleteLog } as never)
 
   if (options.sessionStore === true) {
     await ctx.plugin(SessionStore)
@@ -75,6 +76,7 @@ async function harness(options: HarnessOptions = {}) {
     list,
     load,
     inspect,
+    deleteLog,
     setSessions: (headers: SessionHeader[]) => { listed = headers },
   }
 }
@@ -940,5 +942,55 @@ describe('registry-global session archive', () => {
     )
     const upgraded = await harness({ pool: legacy })
     expect(upgraded.registry.archivedSessionIds).toEqual([])
+  })
+
+  it('unarchiveSession restores the set durably and is idempotent for ids outside it', async () => {
+    const dir = await makeDir('unarchive-home')
+    const result = await harness({ sessions: [header('s1', dir, 100), header('s2', dir, 200)] })
+    await result.registry.archiveSession(SessionId('s1'))
+    await result.registry.archiveSession(SessionId('s2'))
+    expect(result.registry.archivedSessionIds).toEqual(['s1', 's2'])
+
+    await result.registry.unarchiveSession(SessionId('s1'))
+    expect(result.registry.archivedSessionIds).toEqual(['s2'])
+    expect(storedState(result.pool).archivedSessionIds).toEqual(['s2'])
+
+    // Idempotent no-ops: an already-restored id and an id never archived.
+    await result.registry.unarchiveSession(SessionId('s1'))
+    await result.registry.unarchiveSession(SessionId('never-archived'))
+    expect(result.registry.archivedSessionIds).toEqual(['s2'])
+  })
+
+  it('deleteSession removes accounting, archive membership, and the durable log', async () => {
+    const dir = await makeDir('delete-home')
+    const result = await harness({
+      sessions: [header('victim', dir, 100), header('keeper', dir, 200)],
+    })
+    const workspace = result.registry.list()[0]!
+    expect(workspace.sessionIds).toEqual(['keeper', 'victim'])
+    await result.registry.archiveSession(SessionId('victim'))
+    await result.registry.archiveSession(SessionId('keeper'))
+
+    await expect(result.registry.deleteSession(SessionId('victim'))).resolves.toBe(true)
+    // The accounting slot and the archive membership both drop.
+    expect(workspace.sessionIds).toEqual(['keeper'])
+    expect(result.registry.archivedSessionIds).toEqual(['keeper'])
+    expect(result.deleteLog).toHaveBeenCalledWith(SessionId('victim'))
+    expect(storedState(result.pool).archivedSessionIds).toEqual(['keeper'])
+
+    // Unknown ids are an idempotent no-op: persistence answers false once the
+    // artifact is gone, and a never-existing id never reports removal.
+    result.deleteLog.mockResolvedValue(false)
+    await expect(result.registry.deleteSession(SessionId('victim'))).resolves.toBe(false)
+    await expect(result.registry.deleteSession(SessionId('ghost'))).resolves.toBe(false)
+    expect(result.deleteLog).toHaveBeenCalledTimes(3)
+  })
+
+  it('deleteSession rejects a session still bound to the live SessionStore', async () => {
+    const dir = await makeDir('delete-live')
+    const result = await harness({ liveSessions: [header('live-victim', dir, 100)] })
+    await expect(result.registry.deleteSession(SessionId('live-victim')))
+      .rejects.toThrow('cannot delete session \'live-victim\': the session is still live')
+    expect(result.deleteLog).not.toHaveBeenCalled()
   })
 })

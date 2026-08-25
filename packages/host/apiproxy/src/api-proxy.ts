@@ -28,6 +28,7 @@ import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
   WorkspaceMoveInvalidError, WorkspaceOrderInvalidError, WorkspaceUnknownSessionError,
+  WorkspaceLiveSessionError,
 } from '@deepseek-ai/dsh-workspace'
 // Type-only: brings the `ctx.tools` Context merge into this program (viewFor reads presenters).
 import {
@@ -2817,6 +2818,43 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           })
         }
         return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
+      },
+
+      async unarchiveSession(request) {
+        const { sessionId } = request.payload
+        await ctx.workspaceRegistry.unarchiveSession(sessionId)
+        return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
+      },
+
+      async deleteSession(request) {
+        const { sessionId } = request.payload
+        // Session-domain APIs fence subagent-owned identities; deletion is no
+        // different — a child's lifecycle belongs to subagent routing.
+        const live = ctx.agents.get(sessionId)
+        if (live !== undefined && hasApiRemoteSubagentOwner(ctx, live.session, live)) {
+          return err(request, apiRemoteSubagentOwnershipError(sessionId))
+        }
+        const attached = ctx.sessions.get(sessionId)
+        if (attached !== undefined && hasApiRemoteSubagentOwner(ctx, attached, live)) {
+          return err(request, apiRemoteSubagentOwnershipError(sessionId))
+        }
+        try {
+          // Stop the live agent first so its disposal drains (session/disposed
+          // → persistence retirement) before the durable removal; the registry
+          // refuses an identity still bound to the live SessionStore.
+          await ctx.agents.stop(sessionId)
+          await ctx.workspaceRegistry.deleteSession(sessionId)
+          return ok(request, { deleted: true })
+        } catch (error: unknown) {
+          // Only the registry's live-session rejection is the business code;
+          // storage/durability failures propagate as internal errors.
+          if (!(error instanceof WorkspaceLiveSessionError)) throw error
+          return err(request, {
+            code: 'session-live',
+            message: error.message,
+            details: { sessionId },
+          })
+        }
       },
     },
 

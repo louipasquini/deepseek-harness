@@ -293,6 +293,26 @@ export class WorkspaceRuntime implements IWorkspaces {
   }
 
   /**
+   * Restore a session from the registry-global archive set.
+   * @param sessionId - session to unarchive.
+   */
+  async unarchiveSession(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.unarchiveSession(sessionId)
+    if (!result.ok) throw new Error(`session unarchive failed: ${result.error.code}: ${result.error.message}`)
+  }
+
+  /**
+   * Permanently delete a session. The Host stops a live agent, removes the
+   * accounting slot and archive-set membership, and erases the durable log;
+   * the session-removed and changed frames converge the client state.
+   * @param sessionId - session to delete.
+   */
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.deleteSession(sessionId)
+    if (!result.ok) throw new Error(`session delete failed: ${result.error.code}: ${result.error.message}`)
+  }
+
+  /**
    * Move a session within its Workspace's manual order (DOM-insertBefore-like).
    * @param workspaceId - owning workspace.
    * @param sessionId - accounted session to move.
@@ -335,11 +355,16 @@ export class WorkspaceRuntime implements IWorkspaces {
     const sessions = this.sessions.list.getSnapshot()
     const baselinesReady = workspace.phase === 'ready' && sessions.phase === 'ready'
     // An archived current selection clears into the New Session view state —
-    // a hidden row must not stay open behind the list. Sweeping here covers
+    // a hidden row must not stay open behind the list. The same applies to a
+    // current whose summary left the list entirely (permanently deleted):
+    // without this sweep, deleting the open session would leave a grayed,
+    // unselectable conversation behind the sidebar. Sweeping here covers
     // every install path with one rule: the local unary echo, another tab's
     // changed frame, and a reconnect baseline restoring a persisted
-    // selection that was archived while this client was away.
-    if (sessions.current !== undefined && workspace.archivedSessionIds.includes(sessions.current)) {
+    // selection that was archived or deleted while this client was away.
+    const current = sessions.current
+    if (current !== undefined
+      && (workspace.archivedSessionIds.includes(current) || sessions.byId[current] === undefined)) {
       this.sessions.clear()
     }
     this.list.set({

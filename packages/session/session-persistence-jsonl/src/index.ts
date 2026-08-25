@@ -193,6 +193,10 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     return this.coordinator.inspect(id, signal)
   }
 
+  delete(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    return this.coordinator.delete(id, signal)
+  }
+
   // JSONL is sequential media: no loadStoredFrom hook, so the coordinator
   // parses the stored prefix (both encodings) and skips forward to fromSeq.
   readFrom(id: SessionId, fromSeq: number, signal?: AbortSignal): Promise<{ meta: SessionHeader; events: SessionEvent[] }> {
@@ -441,6 +445,30 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     if (tornMarker !== undefined) await this.repair(meta, tornMarker.truncateTo)
     const repairedEvents = [...(tornMarker?.recoveredEvents ?? []), ...closers]
     if (repairedEvents.length > 0) await this.appendLines(meta, repairedEvents)
+  }
+
+  /**
+   * Permanently remove one session's log and its per-session directory. The
+   * log removal is the durable delete; directory cleanup is best-effort so a
+   * leftover artifact (an opposite-encoding file, a temp) cannot resurrect
+   * the session. A torn removal may leave the log for the next scan — the
+   * coordinator's contract treats deletion as retryable.
+   */
+  async deleteStored(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    signal?.throwIfAborted()
+    const path = await this.findLog(id, signal)
+    if (path === undefined) return false
+    signal?.throwIfAborted()
+    await rm(path, { force: true })
+    signal?.throwIfAborted()
+    try {
+      await rm(dirname(path), { recursive: true, force: true })
+    } catch {
+      /* v8 ignore next -- only an external I/O fault rejects the best-effort dir sweep after the durable log removal */
+    }
+    return true
   }
 
   /** List valid unique stored sessions' metadata (header line only — no full-log parse). */

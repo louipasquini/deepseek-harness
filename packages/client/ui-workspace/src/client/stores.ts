@@ -10,8 +10,8 @@ import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-run
 /** Browser-local order account for the hierarchy-free flat Session list. */
 export const FLAT_SESSION_ORDER_KEY = '__flat_session_order__'
 
-/** Session-list grouping mode: workspace sections or one flat recency list. */
-export type SessionGroupBy = 'workspace' | 'flat'
+/** Session-list grouping mode: workspace sections, one flat recency list, or the archived-sessions view. */
+export type SessionGroupBy = 'workspace' | 'flat' | 'archived'
 /** Session order: user-arranged only, or user-arranged plus activity promotion. */
 export type SessionOrderBy = 'manual' | 'updated'
 

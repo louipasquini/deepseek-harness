@@ -273,6 +273,68 @@ export function deriveGroups(
 }
 
 /**
+ * Derive the archived-sessions view: every archived session under its owning
+ * Workspace (the accounting slot never left), plus archived strays under the
+ * ungrouped bucket. Groups are always expanded; subagent-origin sessions stay
+ * hidden (their rows live in the parent's lineage catalog, not this surface).
+ * @param list - sessions list snapshot.
+ * @param workspaces - real workspaces in stable Host order.
+ * @param archivedSessionIds - registry-global archive set.
+ * @returns archived group sections in render order.
+ */
+export function deriveArchivedGroups(
+  list: SessionListState,
+  workspaces: readonly WorkspaceView[],
+  archivedSessionIds: readonly SessionId[],
+): GroupNode[] {
+  const archived = new Set(archivedSessionIds)
+  const descendants = indexSubagentDescendants(list.byId)
+  const groups: GroupNode[] = []
+  const accounted = new Set<SessionId>()
+  for (const workspace of workspaces) {
+    const members: SessionSummary[] = []
+    for (const id of workspace.sessionIds) {
+      const summary = list.byId[id]
+      if (summary === undefined || summary.origin === 'subagent') continue
+      accounted.add(id)
+      if (!archived.has(id)) continue
+      members.push(summary)
+    }
+    if (members.length === 0) continue
+    groups.push({
+      key: workspace.workspaceId,
+      workspaceId: workspace.workspaceId,
+      cwd: workspace.path,
+      createdAt: Date.parse(workspace.createdAt),
+      label: workspace.title,
+      sessionCount: members.length,
+      expanded: true,
+      containsCurrent: false,
+      sessions: members.map(session => sessionNode(session, descendants)),
+    })
+  }
+  const stray = list.ids
+    .map(id => list.byId[id])
+    .filter((s): s is SessionSummary =>
+      s !== undefined && s.origin !== 'subagent' && !accounted.has(s.id) && archived.has(s.id))
+    .sort(byRecency)
+  if (stray.length > 0) {
+    groups.push({
+      key: UNGROUPED_KEY,
+      workspaceId: undefined,
+      cwd: undefined,
+      createdAt: undefined,
+      label: UNGROUPED_LABEL,
+      sessionCount: stray.length,
+      expanded: true,
+      containsCurrent: false,
+      sessions: stray.map(session => sessionNode(session, descendants)),
+    })
+  }
+  return groups
+}
+
+/**
  * Derive the flat session list ("In one list" mode): every session — fork
  * children included — as a top-level row, strictly newest-first. No grouping,
  * no parent/child adjacency. Content search lives outside this derivation

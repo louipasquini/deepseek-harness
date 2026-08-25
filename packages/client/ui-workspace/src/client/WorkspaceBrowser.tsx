@@ -20,7 +20,7 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { WorkspaceBrowserProps } from './contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from './tree.ts'
-import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
+import { deriveArchivedGroups, deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
 import { WorkspacePickFlow } from './WorkspacePicker.tsx'
@@ -145,13 +145,23 @@ function nextSessionOrderAccount({
 
 /** Grouping and ordering menu; own open state so it resets with the wide chrome. */
 function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }: {
-  groupBy: 'workspace' | 'flat'
+  groupBy: 'workspace' | 'flat' | 'archived'
   orderBy: SessionOrderBy
-  onGroupPick: (mode: 'workspace' | 'flat') => void
+  onGroupPick: (mode: 'workspace' | 'flat' | 'archived') => void
   onOrderPick: (mode: SessionOrderBy) => void
   t: WorkspaceBrowserProps['t']
 }) {
   const [open, setOpen] = useState(false)
+  // Order controls are inert in the archived view (archive order is Host
+  // append order); hiding them keeps the menu honest.
+  const orderItems = groupBy === 'archived'
+    ? []
+    : [
+      { type: 'separator' as const, id: 'order-by-separator' },
+      { type: 'label' as const, id: 'order-by', text: t('orderBy.label') },
+      { id: 'manual', label: t('orderBy.manual') },
+      { id: 'updated', label: t('orderBy.updated') },
+    ]
   return (
     <Menu
       open={open}
@@ -160,14 +170,12 @@ function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }: {
         { type: 'label' as const, id: 'group-by', text: t('groupBy.label') },
         { id: 'workspace', label: t('groupBy.workspace') },
         { id: 'flat', label: t('groupBy.flat') },
-        { type: 'separator' as const, id: 'order-by-separator' },
-        { type: 'label' as const, id: 'order-by', text: t('orderBy.label') },
-        { id: 'manual', label: t('orderBy.manual') },
-        { id: 'updated', label: t('orderBy.updated') },
+        { id: 'archived', label: t('groupBy.archived') },
+        ...orderItems,
       ]}
       selectedIds={[groupBy, orderBy]}
       onSelect={(id) => {
-        if (id === 'workspace' || id === 'flat') onGroupPick(id)
+        if (id === 'workspace' || id === 'flat' || id === 'archived') onGroupPick(id)
         else if (id === 'manual' || id === 'updated') onOrderPick(id)
         setOpen(false)
       }}
@@ -665,14 +673,75 @@ function FlatList({
   )
 }
 
+/** The archived-sessions body: every archived session under its owning
+ *  Workspace (or Ungrouped), each row offering Restore and Delete. Groups are
+ *  always expanded; archive order is the Host append order, so no ordering
+ *  or drag controls appear. */
+function ArchivedList({
+  useSessions, workspaces, archivedSessionIds, home,
+  onSessionRestore, onSessionDelete, t,
+}: Pick<WorkspaceBrowserProps, 'useSessions' | 't'> & {
+  workspaces: readonly WorkspaceView[]
+  archivedSessionIds: readonly SessionNode['id'][]
+  /** Host account home for POSIX hover-path abbreviation. */
+  home?: string | undefined
+  /** Restore an archived session (commits without a dialog). */
+  onSessionRestore: (sessionId: SessionNode['id']) => void
+  /** Request permanent deletion (the browser confirms). */
+  onSessionDelete: (sessionId: SessionNode['id']) => void
+}) {
+  const list = useSessions(s => s)
+  const groups = useMemo(
+    () => deriveArchivedGroups(list, workspaces, archivedSessionIds),
+    [list, workspaces, archivedSessionIds],
+  )
+  const now = Date.now()
+  return (
+    <div className={clsx(css.treeBody, css.wide)}>
+      <div className={clsx(css.list, css.flatList)} role="tree" aria-label={t('section.sessions')}>
+        {groups.length === 0 && (
+          <div className={css.empty}>{t('empty.noArchived')}</div>
+        )}
+        {groups.map(group => (
+          <div key={group.key} className={css.groupSection}>
+            <ProjectRowItem
+              group={group}
+              home={home}
+              t={t}
+              onToggle={() => {}}
+              onCreate={() => {}}
+              showCreate={false}
+            />
+            {group.sessions.map(node => (
+              <SessionNodeItem
+                key={node.id}
+                node={node}
+                currentId={undefined}
+                now={now}
+                onOpen={() => {}}
+                onRename={() => {}}
+                onFork={() => {}}
+                onArchive={() => {}}
+                onRestore={onSessionRestore}
+                onDelete={onSessionDelete}
+                archived
+                t={t}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <span className={css.fade} />
+    </div>
+  )
+}
+
 interface RemoteSearchState {
   query: string
   status: 'idle' | 'loading' | 'ready' | 'error'
   items: readonly SessionSearchResultItem[]
   hasMore: boolean
-}
-
-/** Flat search body: local metadata matches plus the current Host result page. */
+}/** Flat search body: local metadata matches plus the current Host result page. */
 function SearchResults({
   useSessions,
   open,
@@ -756,6 +825,8 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  unarchiveSession,
+  deleteSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -972,6 +1043,14 @@ export function WorkspaceBrowser({
     })
   }
 
+  // Restore is the same display-set flip as archive: dialog-free, and the row
+  // leaves the archived view when the archive-set echo lands.
+  const onSessionRestore = (sessionId: SessionNode['id']) => {
+    unarchiveSession(sessionId).catch((reason: unknown) => {
+      console.warn('session restore rejected:', reason)
+    })
+  }
+
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
@@ -1007,12 +1086,54 @@ export function WorkspaceBrowser({
     })
   }
 
+  // Session deletion is permanent (the Host erases the durable log), so it
+  // gets the same browser-owned confirmation treatment as workspace deletion.
+  // The committed projection is the session leaving the sessions list
+  // (host/session-removed), the deletion dialog's close signal.
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: SessionNode['id']; title: string } | null>(null)
+  const [deletingSession, setDeletingSession] = useState(false)
+  const [deleteSessionCommittedId, setDeleteSessionCommittedId] = useState<SessionNode['id'] | null>(null)
+  const [deleteSessionError, setDeleteSessionError] = useState<string | null>(null)
+  const sessionsById = useSessions(s => s.byId)
+  useEffect(() => {
+    if (deleteSessionCommittedId === null
+      || sessionsById[deleteSessionCommittedId] !== undefined) return
+    setDeletingSession(false)
+    setDeleteSessionCommittedId(null)
+    setDeleteSessionTarget(null)
+  }, [deleteSessionCommittedId, sessionsById])
+  const onSessionDelete = (sessionId: SessionNode['id']) => {
+    const summary = sessionsById[sessionId]
+    setDeleteSessionTarget({ sessionId, title: summary?.displayTitle ?? sessionId })
+    setDeleteSessionError(null)
+  }
+  const closeDeleteSession = () => {
+    if (deletingSession) return
+    setDeleteSessionTarget(null)
+    setDeleteSessionError(null)
+  }
+  const confirmDeleteSession = () => {
+    /* v8 ignore next -- the Modal is absent without a target and its button is disabled while deleting. */
+    if (deletingSession || deleteSessionTarget === null) return
+    setDeletingSession(true)
+    setDeleteSessionCommittedId(null)
+    setDeleteSessionError(null)
+    deleteSession(deleteSessionTarget.sessionId).then(() => {
+      // Wait for the committed projection: the session leaves the list on the
+      // host/session-removed frame, then this dialog closes.
+      setDeleteSessionCommittedId(deleteSessionTarget.sessionId)
+    }).catch((reason: unknown) => {
+      setDeletingSession(false)
+      setDeleteSessionError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+
   return (
     <div className={clsx(css.root, !wide && css.rail)}>
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
-            {groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
+            {groupBy === 'workspace' ? t('section.workspaces') : t('section.sessions')}
           </span>
         )}
         {wide && (
@@ -1154,52 +1275,64 @@ export function WorkspaceBrowser({
               t={t}
             />
           )
-          : groupBy === 'flat'
+          : groupBy === 'archived'
             ? (
-              <FlatList
-                useSessions={useSessions} open={open} forkSession={forkSession}
-                onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+              <ArchivedList
+                useSessions={useSessions}
+                workspaces={workspaces}
                 archivedSessionIds={archivedSessionIds}
-                orderBy={orderBy}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
+                home={home}
+                onSessionRestore={onSessionRestore}
+                onSessionDelete={onSessionDelete}
                 t={t}
               />
             )
-            : (
-              <SessionTree
-                useSessions={useSessions}
-                onSessionRename={onSessionRename}
-                onSessionArchive={onSessionArchive}
-                forkSession={forkSession}
-                workspaces={workspaces}
-                groupExpansion={groupExpansion}
-                setGroupExpanded={actions.setGroupExpanded}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
-                archivedSessionIds={archivedSessionIds}
-                startSession={startSession}
-                open={open}
-                insertWorkspaceBefore={insertWorkspaceBefore}
-                insertSessionBefore={insertSessionBefore}
-                orderBy={orderBy}
-                home={home}
-                t={t}
-                onRenameRequest={(workspaceId, currentTitle) => {
-                  setRenameTarget({ workspaceId, currentTitle })
-                  setRenameDraft(currentTitle)
-                  setRenameError(null)
-                }}
-                onDeleteRequest={(workspaceId, title) => {
-                  setDeleteTarget({ workspaceId, title })
-                  setDeleteError(null)
-                }}
-              />
-            ))}
+            : groupBy === 'flat'
+              ? (
+                <FlatList
+                  useSessions={useSessions} open={open} forkSession={forkSession}
+                  onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                  archivedSessionIds={archivedSessionIds}
+                  orderBy={orderBy}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  t={t}
+                />
+              )
+              : (
+                <SessionTree
+                  useSessions={useSessions}
+                  onSessionRename={onSessionRename}
+                  onSessionArchive={onSessionArchive}
+                  forkSession={forkSession}
+                  workspaces={workspaces}
+                  groupExpansion={groupExpansion}
+                  setGroupExpanded={actions.setGroupExpanded}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  archivedSessionIds={archivedSessionIds}
+                  startSession={startSession}
+                  open={open}
+                  insertWorkspaceBefore={insertWorkspaceBefore}
+                  insertSessionBefore={insertSessionBefore}
+                  orderBy={orderBy}
+                  home={home}
+                  t={t}
+                  onRenameRequest={(workspaceId, currentTitle) => {
+                    setRenameTarget({ workspaceId, currentTitle })
+                    setRenameDraft(currentTitle)
+                    setRenameError(null)
+                  }}
+                  onDeleteRequest={(workspaceId, title) => {
+                    setDeleteTarget({ workspaceId, title })
+                    setDeleteError(null)
+                  }}
+                />
+              ))}
       </div>
 
       <Modal
@@ -1292,6 +1425,31 @@ export function WorkspaceBrowser({
       >
         {deleting && <div className={css.deleteStatus} role="status">{t('delete.pending')}</div>}
         {deleteError !== null && <div className={css.renameError} role="alert">{deleteError}</div>}
+      </Modal>
+      <Modal
+        open={deleteSessionTarget !== null}
+        onClose={closeDeleteSession}
+        closeLabel={t('close')}
+        title={t('delete.session.title')}
+        {...deleteSessionTarget === null
+          ? {}
+          : { description: t('delete.session.desc', { name: deleteSessionTarget.title }) }}
+        footer={(
+          <>
+            <Button variant="outline" disabled={deletingSession} onClick={closeDeleteSession}>{t('cancel')}</Button>
+            <Button
+              variant="outline"
+              className={css.deleteAction}
+              disabled={deletingSession}
+              onClick={confirmDeleteSession}
+            >
+              {t('delete.session.title')}
+            </Button>
+          </>
+        )}
+      >
+        {deletingSession && <div className={css.deleteStatus} role="status">{t('delete.session.pending')}</div>}
+        {deleteSessionError !== null && <div className={css.renameError} role="alert">{deleteSessionError}</div>}
       </Modal>
     </div>
   )

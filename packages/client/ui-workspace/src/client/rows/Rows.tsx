@@ -10,7 +10,7 @@ import clsx from 'clsx'
 import {
   HoverCard, IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
   IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
-  IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
+  IconRefreshOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-client-runtime/client'
@@ -109,7 +109,7 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home, t }: {
+export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home, t, showCreate = true }: {
   group: GroupNode
   onToggle: () => void
   onCreate: () => void
@@ -120,6 +120,8 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
   t: RowTranslate
+  /** Hide the trailing create-session button (the archived view has no New Session action). */
+  showCreate?: boolean | undefined
 }) {
   const row = group
   // The ungrouped bucket has no workspace title: its label is dictionary copy.
@@ -184,14 +186,16 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
             )}
           />
         )}
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={t('actions.newSession.aria', { name: label })}
-          onClick={(e) => { e.stopPropagation(); onCreate() }}
-        >
-          <IconPlusOutline16 />
-        </button>
+        {showCreate && (
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('actions.newSession.aria', { name: label })}
+            onClick={(e) => { e.stopPropagation(); onCreate() }}
+          >
+            <IconPlusOutline16 />
+          </button>
+        )}
       </span>
     </div>
   )
@@ -347,6 +351,9 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
 /**
  * One top-level 34px session row: status dot (pending user interaction outranks
  * own or descendant activity), title, relative time, and the row actions menu.
+ * The archived variant swaps the verbs: Restore brings the session back into
+ * grouping surfaces; Delete permanently removes it (the browser owns the
+ * confirmation dialog).
  * @param props.node - derived session node.
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
@@ -354,12 +361,18 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.onRename - open the session rename dialog (id + current title).
  * @param props.onFork - fork a session at its last completed turn.
  * @param props.onArchive - archive a session by id.
+ * @param props.onRestore - restore an archived session (archived rows only).
+ * @param props.onDelete - request permanent deletion (archived rows only).
  * @param props.drag - optional draggable-row wiring.
  * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
+ * @param props.archived - render the archived-row menu (restore/delete).
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
-export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, drag, flat = false, t }: {
+export function SessionNodeItem({
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onRestore, onDelete,
+  drag, flat = false, archived = false, t,
+}: {
   node: SessionNode
   currentId: string | undefined
   now: number
@@ -370,10 +383,16 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Restore this archived session (archived row menu action; commits without a dialog). */
+  onRestore?: ((id: SessionNode['id']) => void) | undefined
+  /** Request permanent deletion (archived row menu action; the browser confirms). */
+  onDelete?: ((id: SessionNode['id']) => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
   flat?: boolean | undefined
+  /** Render the archived-row menu (restore/delete) instead of rename/fork/archive. */
+  archived?: boolean | undefined
   t: RowTranslate
 }) {
   const row = node
@@ -385,13 +404,19 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   const [menuOpen, setMenuOpen] = useState(false)
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
-  // confirmation dialog.
-  const sessionMenuItems = [
-    { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
-    { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
-    // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
-    { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
-  ]
+  // confirmation dialog. An archived row's Restore is the same kind of
+  // display-set flip; its Delete is destructive and confirms at the browser.
+  const sessionMenuItems = archived
+    ? [
+      { id: 'restore', label: t('menu.restoreSession'), icon: <IconRefreshOutline16 /> },
+      { id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true },
+    ]
+    : [
+      { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
+      { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
+      // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
+      { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    ]
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
     <div
@@ -450,6 +475,15 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
             items={sessionMenuItems}
             onSelect={(id) => {
               setMenuOpen(false)
+              if (archived) {
+                // Unknown ids leave before the dispatch: a future menu row must
+                // not inherit the destructive branch as an else fallback.
+                /* v8 ignore next -- archived sessionMenuItems carries exactly these two rows today. */
+                if (id !== 'restore' && id !== 'delete') return
+                if (id === 'restore') onRestore?.(node.id)
+                else onDelete?.(node.id)
+                return
+              }
               if (id === 'rename') onRename(node.id, row.title)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)

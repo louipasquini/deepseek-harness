@@ -242,6 +242,35 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
       }
     })
 
+    it('delete rejects a live session and removes the artifact once its retirement settles', async () => {
+      const fix = await makeFixture()
+      const { ctx, fiber } = await freshCtx(fix)
+      let session!: Session
+      const sessionFiber = await ctx.plugin(Object.assign((inner: Context) => {
+        session = inner.sessions.create(SessionId('delete-live'), { meta: { cwd: WORK } })
+      }, { inject: ['sessions'] }))
+      try {
+        send(session, oneTurnLog())
+        await ctx.sessions.flush(session)
+
+        // The caller must stop a live agent before the durable removal; the
+        // coordinator refuses to race the still-attached identity.
+        await expect(ctx.sessionPersistence.delete(session.id))
+          .rejects.toThrow(`cannot delete session "${session.id}" while it is live`)
+
+        // Disposal drains the identity (session/disposed → retirement); a
+        // delete racing that drain waits for quiescence before removal.
+        await sessionFiber.dispose()
+        await expect(ctx.sessionPersistence.delete(session.id)).resolves.toBe(true)
+        expect((await ctx.sessionPersistence.list()).map(header => header.id))
+          .not.toContain(session.id)
+        await expect(ctx.sessionPersistence.delete(session.id)).resolves.toBe(false)
+      } finally {
+        await fiber.dispose()
+        await fix.cleanup()
+      }
+    })
+
     it('rejects crash-repair load while a live session owns the persisted prefix', async () => {
       const fix = await makeFixture()
       const { ctx, fiber } = await freshCtx(fix)

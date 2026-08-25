@@ -519,6 +519,66 @@ describe('WorkspaceRuntime', () => {
     await workspaces.refresh()
     expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
   })
+
+  it('clears a current deleted by a host/session-removed frame into the New Session view', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    new WorkspaceRuntime(ctx, api, sessions)
+    api.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s-open'), updatedAt: 1, running: false, blank: false }],
+    }) as never)
+    await sessions.refresh()
+    sessions.open(sid('s-open'))
+    expect(sessions.list.getSnapshot().current).toBe('s-open')
+
+    // Deleting the open session drops its summary (host/session-removed); the
+    // projection sweep clears the selection — same rule as an archived current.
+    sessions.handleHostEnvelope({
+      rpcId: 'frame' as never,
+      payload: { type: 'host/session-removed', sessionId: sid('s-open') },
+    } as never)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(sessions.list.getSnapshot().current).toBeUndefined()
+  })
+
+  it('unarchives a session through the unary echo and reports delete failures', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s-archived'), updatedAt: 1, running: false, blank: false }],
+    }) as never)
+    await sessions.refresh()
+    api.onWorkspaceArchiveSession = () =>
+      Promise.resolve(ok({ archivedSessionIds: [sid('s-archived')] }))
+    await workspaces.archiveSession(sid('s-archived'))
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-archived'])
+
+    api.onWorkspaceUnarchiveSession = () => Promise.resolve(ok({ archivedSessionIds: [] }))
+    await expect(workspaces.unarchiveSession(sid('s-archived'))).resolves.toBeUndefined()
+    expect(api.callsOf('workspace.unarchiveSession')).toEqual([{ sessionId: 's-archived' }])
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+
+    // A Host failure leaves the set untouched.
+    api.onWorkspaceUnarchiveSession = () => Promise.resolve(err({
+      code: 'session-not-found', message: 'no session ghost', details: { sessionId: sid('ghost') },
+    }))
+    await expect(workspaces.unarchiveSession(sid('ghost'))).rejects.toThrow(/session-not-found/)
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+
+    api.onWorkspaceDeleteSession = () => Promise.resolve(err({
+      code: 'internal', message: 'durable delete failed', details: {},
+    }))
+    await expect(workspaces.deleteSession(sid('ghost'))).rejects.toThrow(/durable delete failed/)
+    expect(api.callsOf('workspace.deleteSession')).toEqual([{ sessionId: 'ghost' }])
+
+    // The happy path resolves; the committed projections arrive as frames
+    // (covered by the connection fixture / host stream tests).
+    api.onWorkspaceDeleteSession = () => Promise.resolve(ok({ deleted: true }))
+    await expect(workspaces.deleteSession(sid('s-archived'))).resolves.toBeUndefined()
+  })
 })
 
 describe('startInitialSelection', () => {

@@ -711,6 +711,44 @@ describe('createFixtureApi', () => {
     expect(sessions.result.value.items.map(session => session.sessionId)).toContain('fx-alpha')
   })
 
+  it('archives, unarchives, and permanently deletes a session through the workspace surface', async () => {
+    const api = createFixtureApi()
+    const abort = new AbortController()
+    const seen: HostFrame[] = []
+    const consuming = (async () => {
+      for await (const envelope of api.events.host(req({}), abort.signal)) {
+        seen.push(envelope.payload)
+        if (seen.length >= 4) abort.abort()
+      }
+    })()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const archived = await api.workspace.archiveSession(req({ sessionId: sid('fx-alpha') }))
+    expect(archived.result).toMatchObject({ ok: true, value: { archivedSessionIds: ['fx-alpha'] } })
+    const unarchived = await api.workspace.unarchiveSession(req({ sessionId: sid('fx-alpha') }))
+    expect(unarchived.result).toEqual({ ok: true, value: { archivedSessionIds: [] } })
+    const deleted = await api.workspace.deleteSession(req({ sessionId: sid('fx-beta') }))
+    expect(deleted.result).toEqual({ ok: true, value: { deleted: true } })
+    await consuming
+
+    // The archive-set flips and the deletion converge through the existing
+    // host frames: set snapshots for archive/unarchive, accounting + removal
+    // for the delete.
+    expect(seen).toEqual([
+      { type: 'host/archived-sessions-changed', archivedSessionIds: ['fx-alpha'] },
+      { type: 'host/archived-sessions-changed', archivedSessionIds: [] },
+      expect.objectContaining({ type: 'host/workspace-changed' }),
+      { type: 'host/session-removed', sessionId: 'fx-beta' },
+    ])
+    const list = await api.workspace.list(req({}))
+    if (!list.result.ok) throw new Error('workspace list failed')
+    expect(list.result.value.archivedSessionIds).toEqual([])
+    expect(list.result.value.items[0]?.sessionIds).toEqual(['fx-alpha', 'fx-gamma'])
+    const sessions = await api.sessions.list(req({}))
+    if (!sessions.result.ok) throw new Error('session list failed')
+    expect(sessions.result.value.items.map(session => session.sessionId)).not.toContain('fx-beta')
+  })
+
   it('session.create({workspaceId}) lands on the account and unknown ids error', async () => {
     const api = createFixtureApi()
     const abort = new AbortController()

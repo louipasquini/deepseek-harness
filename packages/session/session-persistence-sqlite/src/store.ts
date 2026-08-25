@@ -238,6 +238,27 @@ export class SqliteStore implements PersistenceBackend<number> {
     }
   }
 
+  /**
+   * Permanently remove one session's metadata and event rows. The events table
+   * cascades on the session id, so one row deletion covers the whole log.
+   */
+  async deleteStored(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    await this.observe(signal)
+    this.db.exec(sql('begin-immediate'))
+    try {
+      validateSchemaForMutation(this.databaseConstructor, this.db, this.databasePath)
+      if (this.rowFor(id) === undefined) {
+        this.db.exec(sql('commit'))
+        return false
+      }
+      this.db.prepare(sql('delete-session')).run(id)
+      this.db.exec(sql('commit'))
+      return true
+    } catch (error: unknown) {
+      this.rollback(error, 'delete')
+    }
+  }
+
   async list(signal?: AbortSignal): Promise<SessionHeader[]> {
     await this.observe(signal)
     const rows = this.sessionRows()

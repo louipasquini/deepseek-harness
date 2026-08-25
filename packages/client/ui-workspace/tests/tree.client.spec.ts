@@ -3,7 +3,7 @@ import type {
   SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel, relativeTime,
+  deriveArchivedGroups, deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel, relativeTime,
   UNGROUPED_KEY, UNGROUPED_LABEL,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
@@ -202,6 +202,43 @@ describe('deriveGroups', () => {
     expect(ownedGroups.find(group => group.key === 'project')!.containsCurrent).toBe(true)
     const looseGroups = deriveGroups({ ...list(owned, loose), current: loose.id }, [ws], noArchive, view())
     expect(looseGroups.find(group => group.key === UNGROUPED_KEY)!.containsCurrent).toBe(true)
+  })
+})
+
+describe('deriveArchivedGroups', () => {
+  it('groups archived sessions by owning Workspace and keeps account order', () => {
+    const goneA = summary('gone-a', 2, '/projects/first')
+    const goneB = summary('gone-b', 1, '/projects/first')
+    const kept = summary('kept', 3, '/projects/first')
+    const groups = deriveArchivedGroups(
+      list(goneA, goneB, kept),
+      [workspace('first', ['gone-b', 'gone-a', 'kept'])],
+      archived('gone-a', 'gone-b'),
+    )
+    expect(groups.map(group => group.key)).toEqual(['first'])
+    expect(groups[0]!.sessions.map(node => node.id)).toEqual([sid('gone-b'), sid('gone-a')])
+    expect(groups[0]!.expanded).toBe(true)
+    expect(groups[0]!.containsCurrent).toBe(false)
+  })
+
+  it('omits workspaces without archived members and trails archived strays under Ungrouped', () => {
+    const gone = summary('gone', 1, '/projects/first')
+    const looseGone = summary('loose-gone', 2, '/other')
+    const kept = summary('kept', 3, '/projects/first')
+    const groups = deriveArchivedGroups(
+      list(gone, looseGone, kept),
+      [workspace('first', ['gone', 'kept']), workspace('empty', [])],
+      archived('gone', 'loose-gone'),
+    )
+    expect(groups.map(group => group.key)).toEqual(['first', UNGROUPED_KEY])
+    expect(groups[1]!.sessions.map(node => node.id)).toEqual([sid('loose-gone')])
+  })
+
+  it('hides subagent-origin archived sessions and returns no groups when the set is empty', () => {
+    const child = { ...summary('child', 1), origin: 'subagent' as const }
+    const groups = deriveArchivedGroups(list(child), [], archived('child'))
+    expect(groups).toEqual([])
+    expect(deriveArchivedGroups(list(summary('active', 1)), [], [])).toEqual([])
   })
 })
 
